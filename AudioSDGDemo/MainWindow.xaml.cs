@@ -1,28 +1,20 @@
-﻿using NAudio.Wave;
-using NAudio.Dsp;
+﻿using MathNet.Numerics;
+using MathNet.Numerics.IntegralTransforms;
+using MathNet.Numerics.LinearAlgebra;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using NAudio.Wave.SampleProviders;
-using MathNet.Numerics.LinearAlgebra;
+using System.Numerics;
 
 namespace AudioSDGDemo
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class MainWindow : Window
+    public partial class MainWindow : System.Windows.Window
     {
         private WaveIn waveSource;
         public WaveFileWriter waveFile = null;
@@ -121,7 +113,7 @@ namespace AudioSDGDemo
                 StopPlayback();
             }
 
-            wavReader = new WaveFileReader("maybe-next-time.wav");
+            wavReader = new WaveFileReader("temp.wav");
             StochasticResampleAudio(wavReader);
 
 
@@ -162,38 +154,58 @@ namespace AudioSDGDemo
             {
                 FullBuffer.AddRange(buffer.ToList());
             }
+
+            Complex[] Samples = new Complex[FullBuffer.Count];
+            
+            for (int jj = 0; jj < Samples.Length; jj++)
+            {
+                Samples[jj] = new Complex(FullBuffer[jj], 0);                
+            }
+            Fourier.Forward(Samples, FourierOptions.Default);
+            
+
             var ToBeResampled = new List<Vector<float>>();
-            for (int ii = 0; ii < FullBuffer.Count; ii++)
+            for (int ii = 0; ii < Samples.Length; ii++)
             {
                 float[] temp = new float[2];
-                temp[0] = ii;
-                temp[1] = FullBuffer[ii];                
+                //temp[0] = ii;
+                //temp[1] = FullBuffer[ii];                
+                temp[0] = (float)Samples[ii].Real;
+                temp[1] = ii;
                 ToBeResampled.Add(Vector<float>.Build.DenseOfArray(temp));
             }
             Gesture gest = new Gesture(ToBeResampled, "");
-            var sr = gest.StochasticResample(gest.raw_pts, FullBuffer.Count, 0, 2.0f);
-
-            //WaveFormat waveFormat = new WaveFormat(44100, 16, 1);
-
-            WaveFileWriter outfile = new WaveFileWriter("temp2.wav", wavReader.WaveFormat);
-  
-
-            float[] newbuffer = new float[sr.Count];
-            for (int ii = 0; ii < sr.Count; ii++)
+            var sr = gest.StochasticResample(gest.raw_pts, Samples.Length, 0, .025f);
+            //TODO: Don't use index. Instead, interpolate and grab the appropriate points as they come, that way we don't lose the frequency bins.
+            for (int ii = 0; ii < Samples.Length/2; ii++)
             {
-                if(ii >= 0 && sr[ii][0] % 1.0f >= float.Epsilon)
+                if (false)//(ii > 0) && (ii < Samples.Length-1) && (sr[ii][1] % 1.0f >= float.Epsilon))
                 {
-                    //Console.WriteLine("Fix Me" + sr[ii][0]);
-                    var inter_distance = ii - sr[ii][0];
-
-                    newbuffer[ii] = sr[ii][1]*inter_distance + sr[ii][1]*(1.0f-inter_distance);
+                    var current_freq = sr[ii][1];
+                    var inter_distance = ii - current_freq;
+                    if (inter_distance < 0)
+                        Samples[ii] = new Complex(sr[ii-1][0] * inter_distance + sr[ii][0] * (1.0f - Math.Abs(inter_distance)), Samples[ii].Imaginary);
+                    else
+                        Samples[ii] = new Complex(sr[ii+1][0] * inter_distance + sr[ii][0] * (1.0f - Math.Abs(inter_distance)), Samples[ii].Imaginary);
                 }
                 else
-                {
-                    newbuffer[ii] = sr[ii][1];
-                }
+                {                 
+                    Samples[ii] = new Complex(sr[ii][0], Samples[ii].Imaginary);
+                }                              
+            }
+            for (int ii = Samples.Length/2; ii < Samples.Length; ii++)
+            {
+                Samples[ii] = new Complex(sr[sr.Count-ii][0], Samples[ii].Imaginary);
             }
 
+            Fourier.Inverse(Samples, FourierOptions.Default);
+
+            WaveFileWriter outfile = new WaveFileWriter("temp2.wav", wavReader.WaveFormat);
+            float[] newbuffer = new float[Samples.Length];
+            for (int ii = 0; ii < Samples.Length; ii++)
+            {     
+                newbuffer[ii] = (float)Samples[ii].Real;      
+            }
             outfile.WriteSamples(newbuffer, 0, newbuffer.Length);
             outfile.Close();
         }
