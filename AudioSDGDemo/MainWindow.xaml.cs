@@ -121,7 +121,7 @@ namespace AudioSDGDemo
                 StopPlayback();
             }
 
-            wavReader = new WaveFileReader("temp.wav");
+            wavReader = new WaveFileReader("maybe-next-time.wav");
             StochasticResampleAudio(wavReader);
 
 
@@ -171,18 +171,27 @@ namespace AudioSDGDemo
                 ToBeResampled.Add(Vector<float>.Build.DenseOfArray(temp));
             }
             Gesture gest = new Gesture(ToBeResampled, "");
-            var sr = gest.StochasticResample(gest.raw_pts, FullBuffer.Count, 0, 20);
+            var sr = gest.StochasticResample(gest.raw_pts, FullBuffer.Count, 0, 2.0f);
 
-            WaveFormat waveFormat = new WaveFormat(44100, 16, 1);
+            //WaveFormat waveFormat = new WaveFormat(44100, 16, 1);
 
-            WaveFileWriter outfile = new WaveFileWriter("temp2.wav", waveFormat);
-            Console.WriteLine(outfile.WaveFormat);
+            WaveFileWriter outfile = new WaveFileWriter("temp2.wav", wavReader.WaveFormat);
+  
 
             float[] newbuffer = new float[sr.Count];
             for (int ii = 0; ii < sr.Count; ii++)
             {
-                newbuffer[ii] = sr[ii][1];
-                //outfile.WriteSample(newbuffer[ii]);
+                if(ii >= 0 && sr[ii][0] % 1.0f >= float.Epsilon)
+                {
+                    //Console.WriteLine("Fix Me" + sr[ii][0]);
+                    var inter_distance = ii - sr[ii][0];
+
+                    newbuffer[ii] = sr[ii][1]*inter_distance + sr[ii][1]*(1.0f-inter_distance);
+                }
+                else
+                {
+                    newbuffer[ii] = sr[ii][1];
+                }
             }
 
             outfile.WriteSamples(newbuffer, 0, newbuffer.Length);
