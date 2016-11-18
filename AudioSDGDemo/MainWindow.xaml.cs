@@ -176,26 +176,23 @@ namespace AudioSDGDemo
             }
             Gesture gest = new Gesture(ToBeResampled, "");
             var sr = gest.StochasticResample(gest.raw_pts, Samples.Length, 0, .025f);
-            //TODO: Don't use index. Instead, interpolate and grab the appropriate points as they come, that way we don't lose the frequency bins.
-            for (int ii = 0; ii < Samples.Length/2; ii++)
+
+            //TODO: Why isn't this working?
+            Samples[0] = new Complex(sr[0][0], Samples[0].Imaginary);
+            int index = 1;
+            for (int ii = 1; index < Samples.Length/2; ii++)
             {
-                if (false)//(ii > 0) && (ii < Samples.Length-1) && (sr[ii][1] % 1.0f >= float.Epsilon))
+                while(sr[index][1] < ii)
                 {
-                    var current_freq = sr[ii][1];
-                    var inter_distance = ii - current_freq;
-                    if (inter_distance < 0)
-                        Samples[ii] = new Complex(sr[ii-1][0] * inter_distance + sr[ii][0] * (1.0f - Math.Abs(inter_distance)), Samples[ii].Imaginary);
-                    else
-                        Samples[ii] = new Complex(sr[ii+1][0] * inter_distance + sr[ii][0] * (1.0f - Math.Abs(inter_distance)), Samples[ii].Imaginary);
+                    index++;
                 }
-                else
-                {                 
-                    Samples[ii] = new Complex(sr[ii][0], Samples[ii].Imaginary);
-                }                              
+                var inter_distance = Math.Abs(ii - sr[index-1][1]);
+                Samples[ii] = new Complex(sr[index - 2][0] * inter_distance + sr[index - 1][0] * (1.0f - inter_distance), Samples[ii].Imaginary);                
+
             }
             for (int ii = Samples.Length/2; ii < Samples.Length; ii++)
             {
-                Samples[ii] = new Complex(sr[sr.Count-ii][0], Samples[ii].Imaginary);
+                Samples[ii] = new Complex(Samples[Samples.Length - ii].Real, Samples[ii].Imaginary);
             }
 
             Fourier.Inverse(Samples, FourierOptions.Default);
